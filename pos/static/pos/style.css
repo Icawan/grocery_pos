@@ -15,3 +15,10 @@ body { background: #f7f8fa; }
     display: block;
     margin-top: 0.75rem;
 }
+.line-editor {
+    margin: 0;
+}
+.line-editor input {
+    margin-bottom: 0;
+    min-width: 80px;
+}

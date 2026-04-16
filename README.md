@@ -5,6 +5,8 @@ A complete Django-based grocery POS web system with:
 - Barcode scanning via **camera** (using `zxing-js` in browser)
 - Barcode scanning via **uploaded image file**
 - Product catalog with price + inventory
+- Editable product list (name, barcode, price, stock, active status)
+- Editable cart line items (quantity + unit price)
 - Cart / sale flow with tax and checkout
 - Django Admin for management
 
@@ -65,6 +67,18 @@ In the same scanner section:
 2. Wait for decode status
 3. On successful read, the barcode is auto-submitted to cart
 
+## Add products by scanning unknown barcodes
+If you scan a barcode that is not yet in your catalog:
+1. You will get a warning message that barcode is not registered.
+2. The **Quick add or update product** form is pre-filled with the scanned barcode.
+3. Enter product name, price, and stock, then save.
+4. Scan the same barcode again to add it to the cart.
+
+## Edit quantity, price, and product details
+- In the **Current cart**, each line has editable quantity and unit price.
+- Set quantity to `0` and click **Update** to remove the item from the cart.
+- On the **Products** page, every row is editable for name, barcode, price, stock, and active flag.
+
 ## Expected output when scanning works
 - A green success message like `Added Milk 1L`
 - Cart table updates with quantity and line total
@@ -85,9 +99,11 @@ Use **Seed data** in the top menu to create sample products.
 
 ## Core URLs
 - `/` POS checkout screen
-- `/products/` Product list
-- `/products/add/` Quick add product form endpoint
+- `/products/` Product list and editing
+- `/products/add/` Quick add/update product endpoint
+- `/products/<id>/update/` Product update endpoint
 - `/scan/` Barcode scan endpoint
+- `/sale-item/<id>/update/` Cart line quantity/price update endpoint
 - `/checkout/` Finalize sale
 - `/clear/` Clear current cart
 - `/seed/` Add sample data

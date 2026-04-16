@@ -3,15 +3,19 @@
 {% block content %}
 <h3>Products</h3>
 <table>
-    <thead><tr><th>Name</th><th>Barcode</th><th>Price</th><th>Stock</th><th>Status</th></tr></thead>
+    <thead><tr><th>Name</th><th>Barcode</th><th>Price</th><th>Stock</th><th>Active</th><th>Action</th></tr></thead>
     <tbody>
     {% for p in products %}
     <tr>
-        <td>{{ p.name }}</td>
-        <td>{{ p.barcode }}</td>
-        <td>${{ p.price }}</td>
-        <td>{{ p.stock }}</td>
-        <td>{% if p.is_active %}Active{% else %}Inactive{% endif %}</td>
+        <form method="post" action="{% url 'pos:product_update' p.id %}">
+            {% csrf_token %}
+            <td><input type="text" name="name" value="{{ p.name }}" required></td>
+            <td><input type="text" name="barcode" value="{{ p.barcode }}" required></td>
+            <td><input type="number" name="price" min="0" step="0.01" value="{{ p.price }}" required></td>
+            <td><input type="number" name="stock" min="0" value="{{ p.stock }}" required></td>
+            <td><input type="checkbox" name="is_active" {% if p.is_active %}checked{% endif %}></td>
+            <td><button type="submit">Save</button></td>
+        </form>
     </tr>
     {% endfor %}
     </tbody>
