@@ -53,9 +53,8 @@ class SaleItem(models.Model):
             defaults={'quantity': 1, 'unit_price': product.price, 'line_total': product.price},
         )
         if not created:
-            item.quantity = F('quantity') + 1
-            item.save(update_fields=['quantity'])
-            item.refresh_from_db()
+            cls.objects.filter(pk=item.pk).update(quantity=F('quantity') + 1)
+            item.refresh_from_db(fields=['quantity', 'unit_price'])
             item.save(update_fields=['line_total'])
         Product.objects.filter(pk=product.pk, stock__gt=0).update(stock=F('stock') - 1)
         return item

@@ -7,6 +7,7 @@ app_name = 'pos'
 urlpatterns = [
     path('', views.pos_screen, name='home'),
     path('scan/', views.scan_barcode, name='scan'),
+    path('scan/api/', views.scan_barcode_api, name='scan_api'),
     path('clear/', views.clear_sale, name='clear'),
     path('checkout/', views.checkout_sale, name='checkout'),
     path('sale-item/<int:item_id>/update/', views.update_sale_item, name='sale_item_update'),

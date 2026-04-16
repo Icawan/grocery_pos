@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import F
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -17,6 +18,38 @@ def _get_active_sale(request):
         sale = Sale.objects.create()
         request.session['active_sale_id'] = sale.pk
     return sale
+
+
+def _serialize_sale(sale):
+    items = sale.items.select_related('product').all().order_by('id')
+    return {
+        'items': [
+            {
+                'id': item.id,
+                'name': item.product.name,
+                'quantity': item.quantity,
+                'unit_price': f'{item.unit_price:.2f}',
+                'line_total': f'{item.line_total:.2f}',
+            }
+            for item in items
+        ],
+        'subtotal': f'{sale.subtotal:.2f}',
+        'tax': f'{sale.tax:.2f}',
+        'total': f'{sale.total:.2f}',
+    }
+
+
+def _scan_and_add(sale, barcode):
+    product = Product.objects.filter(barcode=barcode, is_active=True).first()
+    if not product:
+        return False, f'Barcode {barcode} is not registered. Add this product below, then scan again.'
+
+    if product.stock <= 0:
+        return False, f'{product.name} is out of stock.'
+
+    SaleItem.add_or_increment(sale, product)
+    sale.recalculate()
+    return True, f'Added {product.name}'
 
 
 def pos_screen(request):
@@ -43,25 +76,37 @@ def scan_barcode(request):
         return redirect('pos:home')
 
     barcode = form.cleaned_data['barcode'].strip()
-    product = Product.objects.filter(barcode=barcode, is_active=True).first()
-    if not product:
+    ok, message = _scan_and_add(sale, barcode)
+
+    if not ok:
         request.session['pending_barcode'] = barcode
-        messages.warning(
-            request,
-            f'Barcode {barcode} is not registered. Add this product below, then scan again.',
-        )
+        messages.warning(request, message)
         return redirect('pos:home')
 
     request.session.pop('pending_barcode', None)
-
-    if product.stock <= 0:
-        messages.error(request, f'{product.name} is out of stock.')
-        return redirect('pos:home')
-
-    SaleItem.add_or_increment(sale, product)
-    sale.recalculate()
-    messages.success(request, f'Added {product.name}')
+    messages.success(request, message)
     return redirect('pos:home')
+
+
+@require_POST
+@transaction.atomic
+def scan_barcode_api(request):
+    sale = _get_active_sale(request)
+    form = BarcodeScanForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse({'ok': False, 'message': 'Invalid barcode input.'}, status=400)
+
+    barcode = form.cleaned_data['barcode'].strip()
+    ok, message = _scan_and_add(sale, barcode)
+
+    if not ok:
+        request.session['pending_barcode'] = barcode
+        return JsonResponse({'ok': False, 'message': message}, status=404)
+
+    request.session.pop('pending_barcode', None)
+    payload = _serialize_sale(sale)
+    payload.update({'ok': True, 'message': message})
+    return JsonResponse(payload)
 
 
 @require_POST

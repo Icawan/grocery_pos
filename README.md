@@ -59,7 +59,8 @@ On POS page, open **Scan with camera or uploaded image**:
 1. Click **Start camera scan**
 2. Allow camera access
 3. Point at product barcode
-4. On successful read, the product is added to cart automatically
+4. On successful read, the product is added to cart automatically without refreshing the page
+5. Camera stays open so you can scan multiple items continuously
 
 ### 3) Upload barcode image
 In the same scanner section:

@@ -43,7 +43,7 @@
             <thead>
             <tr><th>Item</th><th>Qty</th><th>Unit</th><th>Total</th><th>Action</th></tr>
             </thead>
-            <tbody>
+            <tbody id="cart-body">
             {% for item in items %}
             <tr>
                 <td>{{ item.product.name }}</td>
@@ -68,9 +68,9 @@
         </table>
 
         <article>
-            <p>Subtotal: <strong>${{ sale.subtotal }}</strong></p>
-            <p>Tax: <strong>${{ sale.tax }}</strong></p>
-            <p>Total: <strong>${{ sale.total }}</strong></p>
+            <p>Subtotal: <strong id="subtotal">${{ sale.subtotal }}</strong></p>
+            <p>Tax: <strong id="tax">${{ sale.tax }}</strong></p>
+            <p>Total: <strong id="total">${{ sale.total }}</strong></p>
         </article>
 
         <div class="grid">
@@ -92,7 +92,16 @@
     const stopCameraBtn = document.getElementById('stop-camera');
     const cameraPreview = document.getElementById('camera-preview');
     const barcodeImage = document.getElementById('barcode-image');
+    const cartBody = document.getElementById('cart-body');
+    const subtotal = document.getElementById('subtotal');
+    const tax = document.getElementById('tax');
+    const total = document.getElementById('total');
     const codeReader = window.ZXing ? new ZXing.BrowserMultiFormatReader() : null;
+    const csrfToken = scanForm.querySelector('input[name="csrfmiddlewaretoken"]').value;
+
+    let isSubmitting = false;
+    let lastDetectedText = '';
+    let lastDetectedAt = 0;
 
     input.focus();
 
@@ -100,13 +109,74 @@
         status.textContent = message;
     }
 
-    function submitBarcode(decodedText, sourceLabel) {
-        if (!decodedText) {
+    function renderCart(payload) {
+        if (!payload.items || payload.items.length === 0) {
+            cartBody.innerHTML = '<tr><td colspan="5">Scan products to start sale.</td></tr>';
+        } else {
+            cartBody.innerHTML = payload.items.map(function (item) {
+                return `<tr>
+                    <td>${item.name}</td>
+                    <td>
+                        <form method="post" action="/sale-item/${item.id}/update/" class="line-editor">
+                            <input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}">
+                            <input type="number" name="quantity" min="0" value="${item.quantity}" required>
+                    </td>
+                    <td>
+                            <input type="number" name="unit_price" min="0" step="0.01" value="${item.unit_price}" required>
+                    </td>
+                    <td>$${item.line_total}</td>
+                    <td>
+                            <button type="submit">Update</button>
+                        </form>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        subtotal.textContent = `$${payload.subtotal}`;
+        tax.textContent = `$${payload.tax}`;
+        total.textContent = `$${payload.total}`;
+    }
+
+    async function scanViaApi(decodedText, sourceLabel) {
+        if (!decodedText || isSubmitting) {
             return;
         }
-        input.value = decodedText;
+
+        const now = Date.now();
+        if (decodedText === lastDetectedText && (now - lastDetectedAt) < 700) {
+            return;
+        }
+        lastDetectedText = decodedText;
+        lastDetectedAt = now;
+
+        isSubmitting = true;
         setStatus(`Detected ${decodedText} from ${sourceLabel}. Adding to cart...`);
-        scanForm.submit();
+
+        try {
+            const response = await fetch('{% url "pos:scan_api" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: new URLSearchParams({ barcode: decodedText }).toString(),
+            });
+
+            const payload = await response.json();
+            if (!response.ok || !payload.ok) {
+                setStatus(payload.message || 'Scan failed.');
+                return;
+            }
+
+            input.value = decodedText;
+            renderCart(payload);
+            setStatus(payload.message + ' Ready for next scan.');
+        } catch (error) {
+            setStatus(`Scan request failed: ${error.message || error}`);
+        } finally {
+            isSubmitting = false;
+        }
     }
 
     if (!codeReader) {
@@ -119,12 +189,12 @@
             setStatus('Starting camera scanner...');
             await codeReader.decodeFromVideoDevice(null, cameraPreview, function (result, err) {
                 if (result) {
-                    submitBarcode(result.getText(), 'camera');
+                    scanViaApi(result.getText(), 'camera');
                 } else if (err && !(err instanceof ZXing.NotFoundException)) {
                     setStatus(`Camera scan issue: ${err.message || err}`);
                 }
             });
-            setStatus('Camera active. Hold barcode steady in frame.');
+            setStatus('Camera active. Keep scanning barcodes.');
         } catch (error) {
             setStatus(`Could not start camera: ${error.message || error}`);
         }
@@ -146,7 +216,7 @@
 
         try {
             const result = await codeReader.decodeFromImageUrl(objectUrl);
-            submitBarcode(result.getText(), 'uploaded image');
+            await scanViaApi(result.getText(), 'uploaded image');
         } catch (error) {
             setStatus('No barcode detected in this image. Try better lighting, higher resolution, and a full barcode in frame.');
         } finally {
