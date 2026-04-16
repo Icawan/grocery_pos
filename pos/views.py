@@ -44,8 +44,11 @@ def _scan_and_add(sale, barcode):
     if not product:
         return False, f'Barcode {barcode} is not registered. Add this product below, then scan again.'
 
-    if product.stock <= 0:
-        return False, f'{product.name} is out of stock.'
+    existing_item = sale.items.filter(product=product).first()
+    current_qty = existing_item.quantity if existing_item else 0
+    next_qty = current_qty + 1
+    if next_qty > product.stock:
+        return False, f'Quantity is above stock for {product.name}. Available stock: {product.stock}.'
 
     SaleItem.add_or_increment(sale, product)
     sale.recalculate()
@@ -79,7 +82,8 @@ def scan_barcode(request):
     ok, message = _scan_and_add(sale, barcode)
 
     if not ok:
-        request.session['pending_barcode'] = barcode
+        if 'not registered' in message:
+            request.session['pending_barcode'] = barcode
         messages.warning(request, message)
         return redirect('pos:home')
 
@@ -100,8 +104,9 @@ def scan_barcode_api(request):
     ok, message = _scan_and_add(sale, barcode)
 
     if not ok:
-        request.session['pending_barcode'] = barcode
-        return JsonResponse({'ok': False, 'message': message}, status=404)
+        if 'not registered' in message:
+            request.session['pending_barcode'] = barcode
+        return JsonResponse({'ok': False, 'message': message}, status=409)
 
     request.session.pop('pending_barcode', None)
     payload = _serialize_sale(sale)
@@ -112,8 +117,6 @@ def scan_barcode_api(request):
 @require_POST
 def clear_sale(request):
     sale = _get_active_sale(request)
-    for item in sale.items.select_related('product').all():
-        Product.objects.filter(pk=item.product_id).update(stock=F('stock') + item.quantity)
     sale.delete()
     request.session.pop('active_sale_id', None)
     messages.info(request, 'Sale cleared.')
@@ -121,8 +124,26 @@ def clear_sale(request):
 
 
 @require_POST
+@transaction.atomic
 def checkout_sale(request):
     sale = _get_active_sale(request)
+    items = list(sale.items.select_related('product').all())
+
+    if not items:
+        messages.warning(request, 'Cart is empty.')
+        return redirect('pos:home')
+
+    for item in items:
+        if item.quantity > item.product.stock:
+            messages.error(
+                request,
+                f'Cannot checkout: {item.product.name} quantity in cart ({item.quantity}) is above stock ({item.product.stock}).',
+            )
+            return redirect('pos:home')
+
+    for item in items:
+        Product.objects.filter(pk=item.product_id).update(stock=F('stock') - item.quantity)
+
     sale.recalculate()
     request.session.pop('active_sale_id', None)
     messages.success(request, f'Checkout complete. Total charged: ${sale.total}')
@@ -191,16 +212,9 @@ def update_sale_item(request, item_id):
         messages.error(request, 'Quantity and unit price must be valid positive values.')
         return redirect('pos:home')
 
-    original_quantity = item.quantity
-    difference = quantity - original_quantity
-
-    if difference > 0:
-        if item.product.stock < difference:
-            messages.error(request, f'Not enough stock for {item.product.name}. Available: {item.product.stock}.')
-            return redirect('pos:home')
-        Product.objects.filter(pk=item.product_id).update(stock=F('stock') - difference)
-    elif difference < 0:
-        Product.objects.filter(pk=item.product_id).update(stock=F('stock') + abs(difference))
+    if quantity > item.product.stock:
+        messages.error(request, f'Quantity is above stock for {item.product.name}. Available stock: {item.product.stock}.')
+        return redirect('pos:home')
 
     if quantity == 0:
         item.delete()

@@ -80,11 +80,17 @@ If you scan a barcode that is not yet in your catalog:
 - Set quantity to `0` and click **Update** to remove the item from the cart.
 - On the **Products** page, every row is editable for name, barcode, price, stock, and active flag.
 
+
+## Stock behavior
+- Scanning adds to cart only (does not reduce product stock yet).
+- If cart quantity would go above available stock, the scan is rejected.
+- Stock is finally decremented during checkout only.
+
 ## Expected output when scanning works
 - A green success message like `Added Milk 1L`
 - Cart table updates with quantity and line total
 - Subtotal/tax/total values increase
-- Product stock decreases by 1 per successful scan
+- Cart quantity increases by 1 per successful scan (stock is decremented only at checkout)
 
 ## If you see “No MultiFormat Readers were able to detect the code”
 Try the following:
@@ -112,4 +118,4 @@ Use **Seed data** in the top menu to create sample products.
 ## Notes
 - Database is SQLite by default.
 - Tax is set to 7% in model logic (`Sale.TAX_RATE`).
-- Stock is decremented each time a product is scanned.
+- Stock is decremented only when checkout is completed.
