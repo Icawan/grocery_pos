@@ -1,0 +1,19 @@
+{% extends 'pos/base.html' %}
+
+{% block content %}
+<h3>Products</h3>
+<table>
+    <thead><tr><th>Name</th><th>Barcode</th><th>Price</th><th>Stock</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for p in products %}
+    <tr>
+        <td>{{ p.name }}</td>
+        <td>{{ p.barcode }}</td>
+        <td>${{ p.price }}</td>
+        <td>{{ p.stock }}</td>
+        <td>{% if p.is_active %}Active{% else %}Inactive{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

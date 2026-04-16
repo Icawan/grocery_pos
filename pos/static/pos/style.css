@@ -1,0 +1,5 @@
+body { background: #f7f8fa; }
+.message.success { border-left: 4px solid #2b9348; }
+.message.error { border-left: 4px solid #c1121f; }
+.message.warning { border-left: 4px solid #f48c06; }
+#reader { max-width: 420px; margin: 1rem 0; }
