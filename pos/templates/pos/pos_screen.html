@@ -12,9 +12,15 @@
         </form>
 
         <details>
-            <summary>Scan with camera</summary>
-            <div id="reader"></div>
-            <small>Allow camera access and point at barcode.</small>
+            <summary>Scan with camera or uploaded image</summary>
+            <video id="camera-preview" class="scanner-surface" muted playsinline></video>
+            <div class="grid">
+                <button type="button" id="start-camera">Start camera scan</button>
+                <button type="button" id="stop-camera" class="secondary">Stop camera scan</button>
+            </div>
+            <label for="barcode-image">Scan from image</label>
+            <input id="barcode-image" type="file" accept="image/*">
+            <small id="scanner-status">Use USB scanner, live camera, or upload an image file containing a barcode.</small>
         </details>
 
         <h4>Quick add product</h4>
@@ -65,21 +71,78 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+<script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js" type="text/javascript"></script>
 <script>
 (function () {
     const input = document.getElementById('barcode-input');
+    const scanForm = document.getElementById('scan-form');
+    const status = document.getElementById('scanner-status');
+    const startCameraBtn = document.getElementById('start-camera');
+    const stopCameraBtn = document.getElementById('stop-camera');
+    const cameraPreview = document.getElementById('camera-preview');
+    const barcodeImage = document.getElementById('barcode-image');
+    const codeReader = window.ZXing ? new ZXing.BrowserMultiFormatReader() : null;
+
     input.focus();
 
-    function onScanSuccess(decodedText) {
-        input.value = decodedText;
-        document.getElementById('scan-form').submit();
+    function setStatus(message) {
+        status.textContent = message;
     }
 
-    if (window.Html5QrcodeScanner) {
-        const scanner = new Html5QrcodeScanner('reader', { fps: 10, qrbox: 250 }, false);
-        scanner.render(onScanSuccess);
+    function submitBarcode(decodedText, sourceLabel) {
+        if (!decodedText) {
+            return;
+        }
+        input.value = decodedText;
+        setStatus(`Detected ${decodedText} from ${sourceLabel}. Adding to cart...`);
+        scanForm.submit();
     }
+
+    if (!codeReader) {
+        setStatus('Scanner library failed to load. You can still type or use USB scanner input.');
+        return;
+    }
+
+    startCameraBtn.addEventListener('click', async function () {
+        try {
+            setStatus('Starting camera scanner...');
+            await codeReader.decodeFromVideoDevice(null, cameraPreview, function (result, err) {
+                if (result) {
+                    submitBarcode(result.getText(), 'camera');
+                } else if (err && !(err instanceof ZXing.NotFoundException)) {
+                    setStatus(`Camera scan issue: ${err.message || err}`);
+                }
+            });
+            setStatus('Camera active. Hold barcode steady in frame.');
+        } catch (error) {
+            setStatus(`Could not start camera: ${error.message || error}`);
+        }
+    });
+
+    stopCameraBtn.addEventListener('click', function () {
+        codeReader.reset();
+        setStatus('Camera scan stopped.');
+    });
+
+    barcodeImage.addEventListener('change', async function (event) {
+        const file = event.target.files && event.target.files[0];
+        if (!file) {
+            return;
+        }
+
+        const objectUrl = URL.createObjectURL(file);
+        setStatus('Reading barcode from uploaded image...');
+
+        try {
+            const result = await codeReader.decodeFromImageUrl(objectUrl);
+            submitBarcode(result.getText(), 'uploaded image');
+        } catch (error) {
+            setStatus('No barcode detected in this image. Try better lighting, higher resolution, and a full barcode in frame.');
+        } finally {
+            URL.revokeObjectURL(objectUrl);
+            barcodeImage.value = '';
+        }
+    });
 })();
 </script>
 {% endblock %}
